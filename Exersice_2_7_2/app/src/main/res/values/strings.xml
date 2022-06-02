@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Exersice_2_7_2</string>
+    <string name="enter">Вход</string>
+    <string name="login">Login</string>
+    <string name="password">Password</string>
+    <string name="wrong_password">Wrong password</string>
+    <string name="try_again">Try Again</string>
+    <string name="success">Success</string>
+    <string name="right_password">Right password</string>
+    <string name="registration">Зарегестрироваться</string>
+</resources>

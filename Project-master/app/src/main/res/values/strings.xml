@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Project</string>
+    <string name="change_music">Обменяться музыкой</string>
+    <string name="download">Скачать</string>
+    <string name="bluetooth">Bluetooth</string>
+    <string name="now_playing">Сейчас играет</string>
+    <string name="device_name">Имя устройства</string>
+    <string name="enable_btn_bluetooth">Включить bluetooth</string>
+    <string name="disable_btn_bluetooth">Выключить bluetooth</string>
+    <string name="settings">Настройки</string>
+    <string name="find_music">Искать музыку</string>
+</resources>
