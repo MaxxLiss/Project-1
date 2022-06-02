@@ -8,9 +8,9 @@ public class FindUser {
     private String songName;
     private String address;
 
-    public FindUser(String deviceName, String songName) {
+    public FindUser(String deviceName, String address) {
         this.deviceName = deviceName;
-        this.songName = songName;
+        this.address = address;
     }
 
     public String getAddress() {

@@ -9,4 +9,5 @@
     <string name="disable_btn_bluetooth">Выключить bluetooth</string>
     <string name="settings">Настройки</string>
     <string name="find_music">Искать музыку</string>
+    <string name="no_users_near">Пользователей рядом нет</string>
 </resources>

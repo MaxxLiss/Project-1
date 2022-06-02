@@ -1,5 +1,8 @@
 package com.example.project;
 
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -11,8 +14,17 @@ import androidx.work.WorkManager;
 
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothServerSocket;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
@@ -23,12 +35,17 @@ import com.example.project.fragments.FragmentSongList;
 import com.example.project.fragments.SendInfoFromFragment;
 import com.example.project.workers.ScanningBluetoothWorker;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity implements SendInfoFromFragment {
 
     public static final String MY_TAG = "MY_TAG";
-    public static final int SET_NEW_FIND_USER_LIST = 0;
+    private static final String NAME = "MusicAround";
+    public static final int BLUETOOTH_CONNECT_REQUEST_CODE = 143;
+    public static final int BLUETOOTH_SCAN_REQUEST_CODE = 143;
 
     private MenuItem to_settings;
     private MenuItem bluetooth_state;
@@ -42,16 +59,27 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
 
     private WorkManager workManager;
 
+    private FragmentManager fm;
     private FragmentSongList fragmentSongList;
     private FragmentSettings fragmentSettings;
-    private final FragmentManager fm = getSupportFragmentManager();
 
     private BluetoothAdapter bluetoothAdapter;
+    private final MyBroadcastReceiver receiver = new MyBroadcastReceiver();
+    //Intent discoverableBluetoothIntent;
+    //private final int BLUETOOTH_CONNECT_CODE = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        IntentFilter foundFilter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        IntentFilter stateChangedFilter = new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        registerReceiver(receiver, foundFilter);
+        registerReceiver(receiver, stateChangedFilter);
+
+        //discoverableBluetoothIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+        //discoverableBluetoothIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 10 * 60);
 
         ////
         test = findViewById(R.id.test);
@@ -59,36 +87,11 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
 
         refresh_layout = findViewById(R.id.refresh_layout);
 
-//        handler = new Handler(Looper.getMainLooper()) {
-//            @Override
-//            public void handleMessage(@NonNull Message msg) {
-//                switch (msg.what) {
-//                    case SET_NEW_FIND_USER_LIST:
-//                        ArrayList<FindUser> findUserList = (ArrayList<FindUser>) msg.obj;
-//                        if (findUserList != null) {
-//                            fragmentSongList.updateSongList(findUserList);
-//                        } else {
-//                            Toast.makeText(MainActivity.this, "Попробуйте обновить снова", Toast.LENGTH_SHORT).show();
-//                        }
-//                        break;
-//                }
-//            }
-//        };
-
-        ////
-
-        ArrayList<FindUser> findUserList = new ArrayList<FindUser>();
-        for (int i = 0; i < 100; i++) {
-            findUserList.add(i, new FindUser("aaa", "bbb"));
-        }
-        ////
-
+        fm = getSupportFragmentManager();
         FragmentTransaction ft = fm.beginTransaction();
-        ////
-        fragmentSongList = new FragmentSongList(findUserList);
-        ////
+        fragmentSongList = new FragmentSongList();
         fragmentSettings = new FragmentSettings();
-        ft.add(R.id.main_screen, fragmentSongList);
+        ft.replace(R.id.main_screen, fragmentSongList);
         ft.commit();
 
         workManager = WorkManager.getInstance(MainActivity.this);
@@ -97,18 +100,82 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
         refresh_layout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
-                checkBluetoothState();
 
-                ArrayList<FindUser> findUserList = new ArrayList<FindUser>();
-                for (int i = 0; i < 100; i++) {
-                    findUserList.add(i, new FindUser("bbb", "aaa"));
+                //startActivityForResult(discoverableBluetoothIntent, BLUETOOTH_CONNECT_CODE);
+
+                if (checkBluetoothState()) {
+
+                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                        if (bluetoothAdapter.startDiscovery()) {
+                            Log.i(MY_TAG, "Discovery start");
+                        }
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_SCAN}, BLUETOOTH_SCAN_REQUEST_CODE);
+                    }
+
+                    fragmentSongList.updateSongList(receiver.getFindUserList());
+
+                } else {
+
+                    Toast.makeText(MainActivity.this, "Включите bluetooth", Toast.LENGTH_SHORT).show();
+
                 }
-
-                fragmentSongList.updateSongList(findUserList);
-
                 refresh_layout.setRefreshing(false);
             }
         });
+    }
+
+    private class MyBroadcastReceiver extends BroadcastReceiver {
+        private List<FindUser> findUserList;
+
+        public List<FindUser> getFindUserList() {
+            return findUserList;
+        }
+
+        public void onReceive(Context context, Intent intent) {
+
+            String action = intent.getAction();
+            findUserList = new ArrayList<>();
+
+            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+
+                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    findUserList.add(new FindUser(device.getName(), device.getAddress()));
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_CONNECT_REQUEST_CODE);
+                }
+
+                Log.i(MY_TAG, "BluetoothDevice found");
+            }
+
+        }
+    }
+
+    private class BluetoothServerConnection extends Thread {
+
+        private final BluetoothServerSocket mmServerSocket;
+
+        private BluetoothServerConnection() {
+            BluetoothServerSocket tmp = null;
+            try {
+                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    tmp = bluetoothAdapter.listenUsingRfcommWithServiceRecord(NAME, UUID.randomUUID());
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_CONNECT_REQUEST_CODE);
+                }
+            } catch (IOException e) {
+                Log.e(MY_TAG, "Socket's listen() method failed", e);
+            }
+            mmServerSocket = tmp;
+        }
+
+        @Override
+        public void run() {
+
+
+        }
     }
 
     @Override
@@ -123,6 +190,8 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
                     } else {
                         bluetoothAdapter.disable();
                     }
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_CONNECT_REQUEST_CODE);
                 }
                 checkBluetoothState();
                 break;
@@ -171,42 +240,6 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
         return bluetoothAdapter.isEnabled();
     }
 
-//    void bindService() {
-//
-//        Log.i(MY_TAG, "bindService()");
-//        //Log.i(MY_TAG, "isBluetoothServiceBound " + isBluetoothServiceBound);
-//
-//        if (bluetoothServiceConnection == null) {
-//            bluetoothServiceConnection = new ServiceConnection() {
-//                @Override
-//                public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
-//                    isBluetoothServiceBound = true;
-//                    ScanningBluetoothService.MyServiceBinder myServiceBinder = (ScanningBluetoothService.MyServiceBinder) iBinder;
-//                    scanningBluetoothService = myServiceBinder.getService();
-//                }
-//
-//                @Override
-//                public void onServiceDisconnected(ComponentName componentName) {
-//                    isBluetoothServiceBound = false;
-//                }
-//            };
-//        }
-//        bindService(bluetoothServiceIntent, bluetoothServiceConnection, Context.BIND_AUTO_CREATE);
-//    }
-//
-//    void unbindService() {
-//
-//        Log.i(MY_TAG, "unbindService()");
-//        //Log.i(MY_TAG, "isBluetoothServiceBound " + isBluetoothServiceBound);
-//
-//        if (isBluetoothServiceBound) {
-//            unbindService(bluetoothServiceConnection);
-//            isBluetoothServiceBound = false;
-//        }
-//
-//        //Log.i(MY_TAG, "bluetoothServiceConnection is null " + (bluetoothServiceConnection == null));
-//    }
-
     @Override
     public void sendNumber(int number) {
 
@@ -215,9 +248,10 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
     }
 
     @Override
-    protected void onStart() {
-        Toast.makeText(MainActivity.this, "Попробуйте обновить экран", Toast.LENGTH_SHORT).show();
-        super.onStart();
-    }
+    protected void onDestroy() {
 
+        unregisterReceiver(receiver);
+
+        super.onDestroy();
+    }
 }

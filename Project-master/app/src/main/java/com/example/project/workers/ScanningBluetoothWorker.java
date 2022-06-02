@@ -45,12 +45,6 @@ public class ScanningBluetoothWorker extends Worker {
             dataMap.put("FindUser" + i, findUserList.get(i));
         }
 
-        Data output = new Data.Builder()
-                .put("aaa", findUserList)
-                //.putAll((Map<String, Object>) dataMap)
-                .putBoolean("Result in null", findUserList.size() == 0)
-                .build();
-
         return ListenableWorker.Result.success();
     }
 

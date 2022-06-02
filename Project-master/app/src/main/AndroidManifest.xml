@@ -16,11 +16,6 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Project" >
-        <service
-            android:name=".ScanningBluetoothService"
-            android:enabled="true"
-            android:exported="false"
-            android:stopWithTask="false" />
 
         <activity
             android:name=".MainActivity"
