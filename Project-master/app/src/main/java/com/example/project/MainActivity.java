@@ -102,7 +102,6 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
             public void onRefresh() {
 
                 //startActivityForResult(discoverableBluetoothIntent, BLUETOOTH_CONNECT_CODE);
-
                 if (checkBluetoothState()) {
 
                     if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
