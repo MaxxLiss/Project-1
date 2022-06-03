@@ -1,180 +1,115 @@
 package com.example.project;
 
-import androidx.activity.result.ActivityResultCallback;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
-import androidx.work.OneTimeWorkRequest;
-import androidx.work.WorkManager;
 
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothServerSocket;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
+import android.bluetooth.le.BluetoothLeScanner;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.TextView;
-import android.widget.Toast;
 
+import com.example.project.bluetooth.BTStateBroadcastReceiver;
 import com.example.project.fragments.FragmentSettings;
 import com.example.project.fragments.FragmentSongList;
-import com.example.project.fragments.SendInfoFromFragment;
-import com.example.project.workers.ScanningBluetoothWorker;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
-public class MainActivity extends AppCompatActivity implements SendInfoFromFragment {
+public class MainActivity extends AppCompatActivity implements SendInfo {
 
     public static final String MY_TAG = "MY_TAG";
     private static final String NAME = "MusicAround";
-    public static final int BLUETOOTH_CONNECT_REQUEST_CODE = 143;
-    public static final int BLUETOOTH_SCAN_REQUEST_CODE = 143;
+    public static final String FIND_MUSIC_APP = "FindMusicApp";
+
+    private static String deviceName;
+
+    public static final int PERMISSION_REQUEST_BLUETOOTH_CONNECT = 143;
+    public static final int PERMISSION_REQUEST_BLUETOOTH_SCAN = 144;
+    private static final int PERMISSION_REQUEST_COARSE_LOCATION = 145;
+    public static final int PERMISSION_REQUEST_BLUETOOTH = 146;
+    private static final int PERMISSION_REQUEST_BLUETOOTH_ADMIN = 147;
 
     private MenuItem to_settings;
     private MenuItem bluetooth_state;
     private MenuItem to_main_screen;
 
-    ////
-    private TextView test;
-    ////
-
     private SwipeRefreshLayout refresh_layout;
-
-    private WorkManager workManager;
 
     private FragmentManager fm;
     private FragmentSongList fragmentSongList;
     private FragmentSettings fragmentSettings;
 
     private BluetoothAdapter bluetoothAdapter;
-    private final MyBroadcastReceiver receiver = new MyBroadcastReceiver();
-    //Intent discoverableBluetoothIntent;
-    //private final int BLUETOOTH_CONNECT_CODE = 1;
+    private BluetoothLeScanner bluetoothScanner;
+
+    private BTStateBroadcastReceiver btStateBroadcastReceiver;
+
+    private List<FindUser> findUserList;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        IntentFilter foundFilter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-        IntentFilter stateChangedFilter = new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
-        registerReceiver(receiver, foundFilter);
-        registerReceiver(receiver, stateChangedFilter);
+        requestPermissions();
 
-        //discoverableBluetoothIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-        //discoverableBluetoothIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 10 * 60);
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        bluetoothScanner = bluetoothAdapter.getBluetoothLeScanner();
 
-        ////
-        test = findViewById(R.id.test);
-        ////
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, PERMISSION_REQUEST_BLUETOOTH_CONNECT);
+
+        } else {
+
+            deviceName = bluetoothAdapter.getName();
+            bluetoothAdapter.setName(FIND_MUSIC_APP + "*" + bluetoothAdapter.getName());
+
+        }
+
+        btStateBroadcastReceiver = new BTStateBroadcastReceiver(getApplicationContext());
 
         refresh_layout = findViewById(R.id.refresh_layout);
 
         fm = getSupportFragmentManager();
         FragmentTransaction ft = fm.beginTransaction();
         fragmentSongList = new FragmentSongList();
-        fragmentSettings = new FragmentSettings();
+        fragmentSettings = new FragmentSettings(deviceName);
         ft.replace(R.id.main_screen, fragmentSongList);
         ft.commit();
 
-        workManager = WorkManager.getInstance(MainActivity.this);
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        findUserList = new ArrayList<>();
+
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+//                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+//
+//            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, PERMISSION_REQUEST_BLUETOOTH_CONNECT);
+//
+//        }
+//
+//        ScanSettings scanSettings = new ScanSettings.Builder()
+//                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+//                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).build();
+//
+//        bluetoothScanner.startScan(null, scanSettings, scanCallback);
+
 
         refresh_layout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
 
-                //startActivityForResult(discoverableBluetoothIntent, BLUETOOTH_CONNECT_CODE);
-                if (checkBluetoothState()) {
 
-                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
-                        if (bluetoothAdapter.startDiscovery()) {
-                            Log.i(MY_TAG, "Discovery start");
-                        }
-                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_SCAN}, BLUETOOTH_SCAN_REQUEST_CODE);
-                    }
-
-                    fragmentSongList.updateSongList(receiver.getFindUserList());
-
-                } else {
-
-                    Toast.makeText(MainActivity.this, "Включите bluetooth", Toast.LENGTH_SHORT).show();
-
-                }
-                refresh_layout.setRefreshing(false);
             }
         });
-    }
-
-    private class MyBroadcastReceiver extends BroadcastReceiver {
-        private List<FindUser> findUserList;
-
-        public List<FindUser> getFindUserList() {
-            return findUserList;
-        }
-
-        public void onReceive(Context context, Intent intent) {
-
-            String action = intent.getAction();
-            findUserList = new ArrayList<>();
-
-            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
-
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-
-                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                    findUserList.add(new FindUser(device.getName(), device.getAddress()));
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_CONNECT_REQUEST_CODE);
-                }
-
-                Log.i(MY_TAG, "BluetoothDevice found");
-            }
-
-        }
-    }
-
-    private class BluetoothServerConnection extends Thread {
-
-        private final BluetoothServerSocket mmServerSocket;
-
-        private BluetoothServerConnection() {
-            BluetoothServerSocket tmp = null;
-            try {
-                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                    tmp = bluetoothAdapter.listenUsingRfcommWithServiceRecord(NAME, UUID.randomUUID());
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_CONNECT_REQUEST_CODE);
-                }
-            } catch (IOException e) {
-                Log.e(MY_TAG, "Socket's listen() method failed", e);
-            }
-            mmServerSocket = tmp;
-        }
-
-        @Override
-        public void run() {
-
-
-        }
     }
 
     @Override
@@ -183,16 +118,22 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
         switch (item.getItemId()) {
 
             case R.id.bluetooth_state:
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                    if (!bluetoothAdapter.isEnabled()) {
-                        bluetoothAdapter.enable();
-                    } else {
-                        bluetoothAdapter.disable();
-                    }
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_CONNECT_REQUEST_CODE);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+
+                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, PERMISSION_REQUEST_BLUETOOTH_CONNECT);
+
                 }
-                checkBluetoothState();
+
+                if (!bluetoothAdapter.isEnabled()) {
+                    bluetoothAdapter.enable();
+                    bluetooth_state.setTitle("Выключить bluetooth");
+                } else {
+                    bluetoothAdapter.disable();
+                    bluetooth_state.setTitle("Включить bluetooth");
+                }
+
                 break;
 
             case R.id.to_settings:
@@ -218,38 +159,184 @@ public class MainActivity extends AppCompatActivity implements SendInfoFromFragm
     }
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+
+        switch (requestCode) {
+            case PERMISSION_REQUEST_BLUETOOTH_CONNECT:
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (grantResults.length < 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+
+                        ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, PERMISSION_REQUEST_BLUETOOTH_CONNECT);
+
+                    }
+                }
+                break;
+
+            case PERMISSION_REQUEST_BLUETOOTH_SCAN:
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (grantResults.length < 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+
+                        requestPermissions(new String[]{Manifest.permission.BLUETOOTH_SCAN}, PERMISSION_REQUEST_BLUETOOTH_SCAN);
+
+                    }
+                }
+                break;
+
+            case PERMISSION_REQUEST_COARSE_LOCATION:
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (grantResults.length < 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+
+                        requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, PERMISSION_REQUEST_COARSE_LOCATION);
+
+                    }
+                }
+                break;
+
+            case PERMISSION_REQUEST_BLUETOOTH:
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (grantResults.length < 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+
+                        requestPermissions(new String[]{Manifest.permission.BLUETOOTH}, PERMISSION_REQUEST_BLUETOOTH);
+
+                    }
+                }
+
+            case PERMISSION_REQUEST_BLUETOOTH_ADMIN:
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (grantResults.length < 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+
+                        requestPermissions(new String[]{Manifest.permission.BLUETOOTH_ADMIN}, PERMISSION_REQUEST_BLUETOOTH_ADMIN);
+
+                    }
+                }
+                break;
+
+            default:
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        }
+    }
+
+    @Override
     public boolean onCreateOptionsMenu(Menu menu) {
+
         getMenuInflater().inflate(R.menu.main_menu, menu);
 
         to_settings = menu.findItem(R.id.to_settings);
         bluetooth_state = menu.findItem(R.id.bluetooth_state);
         to_main_screen = menu.findItem(R.id.to_main_screen);
 
-        checkBluetoothState();
-
-        return super.onCreateOptionsMenu(menu);
-    }
-
-    private boolean checkBluetoothState() {
-        if (bluetoothAdapter.isEnabled()) {
-            bluetooth_state.setIcon(R.drawable.disable_bluetooth);
-        } else {
+        if (!bluetoothAdapter.isEnabled()) {
             bluetooth_state.setIcon(R.drawable.enable_bluetooth);
+            bluetooth_state.setTitle("Выключить bluetooth");
+        } else {
+            bluetooth_state.setIcon(R.drawable.disable_bluetooth);
+            bluetooth_state.setTitle("Включить bluetooth");
         }
-        return bluetoothAdapter.isEnabled();
+        return super.onCreateOptionsMenu(menu);
     }
 
     @Override
     public void sendNumber(int number) {
 
-        test.setText(String.valueOf(number));
+        //test.setText(String.valueOf(number));
+
+    }
+
+    private void requestPermissions() {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (this.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+
+                requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, PERMISSION_REQUEST_COARSE_LOCATION);
+
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (this.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+
+                requestPermissions(new String[]{Manifest.permission.BLUETOOTH_SCAN}, PERMISSION_REQUEST_BLUETOOTH_SCAN);
+
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (this.checkSelfPermission(Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+
+                requestPermissions(new String[]{Manifest.permission.BLUETOOTH}, PERMISSION_REQUEST_BLUETOOTH);
+
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (this.checkSelfPermission(Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
+
+                requestPermissions(new String[]{Manifest.permission.BLUETOOTH_ADMIN}, PERMISSION_REQUEST_BLUETOOTH_ADMIN);
+
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+
+                ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, PERMISSION_REQUEST_BLUETOOTH_CONNECT);
+
+            }
+        }
+    }
+
+    @Override
+    public void sendNewDeviceName(String deviceName) {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, PERMISSION_REQUEST_BLUETOOTH_CONNECT);
+
+        } else {
+
+            MainActivity.deviceName = deviceName;
+            bluetoothAdapter.setName(FIND_MUSIC_APP + "*" + bluetoothAdapter.getName());
+
+        }
+
+    }
+
+    @Override
+    public void sendBluetoothState(int bluetoothState) {
+
+        switch (bluetoothState) {
+            case BluetoothAdapter.STATE_ON:
+                bluetooth_state.setIcon(R.drawable.enable_bluetooth);
+                break;
+
+            case BluetoothAdapter.STATE_OFF:
+                bluetooth_state.setIcon(R.drawable.disable_bluetooth);
+                break;
+
+            default:
+                bluetooth_state.setIcon(R.drawable.changing_bluetooth);
+                break;
+        }
 
     }
 
     @Override
     protected void onDestroy() {
 
-        unregisterReceiver(receiver);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, PERMISSION_REQUEST_BLUETOOTH_CONNECT);
+
+        } else {
+
+            bluetoothAdapter.setName(deviceName);
+
+        }
+
+        //unregisterReceiver(receiver);
 
         super.onDestroy();
     }

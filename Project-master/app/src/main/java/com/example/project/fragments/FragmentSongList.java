@@ -1,7 +1,6 @@
 package com.example.project.fragments;
 
 import android.app.Activity;
-import android.bluetooth.BluetoothServerSocket;
 import android.content.Context;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -20,6 +19,7 @@ import com.example.project.FindUser;
 import com.example.project.FindUserAdapter;
 import com.example.project.FindUserAdapter.OnItemClickListener;
 import com.example.project.R;
+import com.example.project.SendInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,7 +72,7 @@ public class FragmentSongList extends Fragment {
         @Override
         public void OnItemClick(int position) {
             try {
-                ((SendInfoFromFragment) activity).sendNumber(position);
+                ((SendInfo) activity).sendNumber(position);
             } catch (ClassCastException exception) {
                 Toast.makeText(getActivity(), "error", Toast.LENGTH_SHORT).show();
             }
